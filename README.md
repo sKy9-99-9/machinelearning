@@ -1,274 +1,255 @@
-# Decision Trees Assignment Notebook
+# Convolution & CNNs — Assignment Notebook
 
-This notebook walks you through building and analysing decision trees for a heart disease classification problem.  
-You’ll start by implementing core concepts like entropy and information gain, then use them to construct an ID3-style decision tree, extend it to numerical features, and finally explore overfitting, visualization, and random forests.
-
----
-
-## ❤️ Dataset & Setup
-
-**Goal:**  
-Work with a real-world **heart disease** dataset and prepare it for training decision tree models.
-
-### What Happens Here
-
-- Load multiple heart disease files (`processed.va.data`, `processed.hungarian.data`, `processed.switzerland.data`, `processed.cleveland.data`) into a single `DataFrame`.
-- Assign meaningful column names such as `age`, `sex`, `cp`, `trestbps`, `chol`, `thalach`, `ca`, `thal`, `num`, etc.
-- Convert the multi-class target (`num`) into a **binary label** (e.g. “healthy” vs “heart disease”).
-- Perform a **train/test split** (70/30) using `train_test_split`.
-- Separate **categorical** and **numerical** features using a cardinality threshold (`cat_threshold`) and build:
-  - `train_data_cat` / `test_data_cat` (categorical, integer-coded)
-  - `train_data_num` / `test_data_num` (numerical, floats)
+This notebook is a hands-on tour from basic image filtering to a working Convolutional Neural Network (CNN).  
+You’ll implement classic image operations (sepia, grayscale, blur), write your own **convolution** and **pooling**, apply real filters (Gaussian, sharpen, edges), and finish with both a **hand-coded feature extractor** and a **Keras CNN** on **Fashion-MNIST**.
 
 ---
 
-## 🧮 Assignment 1 — Entropy
+## 🧰 Setup & Libraries
 
-**Goal:**  
-Implement entropy as a measure of label impurity for binary classification.
+You’ll use:
+- `numpy`, `matplotlib`, `math`
+- `cv2` (OpenCV) for image I/O
+- `scipy.signal.convolve` (fast convolution helper)
+- `skimage.measure.block_reduce` (fast pooling helper)
+- `tensorflow.keras` (for dense NN and CNN)
+- Dataset: **Fashion-MNIST** via `tensorflow.keras.datasets.fashion_mnist` (10 clothing classes, 28×28 grayscale)
 
-### What to Implement
-
-- `ratio(labels)`  
-  - Compute the proportion \( p \) of `True` labels in a list/array of booleans.
-- `entropy_sub(p)`  
-  - Compute the contribution of a single probability \( p \) using base-2 logarithms.
-  - Handle edge cases where \( p = 0 \) or \( p = 1 \) so you don’t take `log(0)`.
-- `entropy(labels)`  
-  - Use `ratio(labels)` and `entropy_sub` to compute the total entropy of the label set.
-
-### What You’ll Check
-
-- Use the provided `assert` statements to verify:
-  - Entropy is **0** when all labels are the same.
-  - Entropy is **1** when the labels are perfectly balanced (50/50).
-- Generate lists of labels with different ratios of `True`/`False`, compute their entropy, and **plot entropy as a function of the positive-class ratio** to see the characteristic concave shape.
+Images are treated as NumPy arrays:
+- Color image shape: `(H, W, 3)` with RGB channels.
+- Values are floats in `[0, 1]` unless stated otherwise.
 
 ---
 
-## 🧱 Assignment 2 — Splitting Data
+## 🧭 Learning Path
 
-**Goal:**  
-Implement utilities to split a `DataFrame` by a categorical feature into subsets for each unique value.
-
-### What to Implement
-
-- `masks_for_split(dataframe, feature)`  
-  - Return a dictionary mapping **feature value → boolean mask**, selecting rows where the column `feature` equals that value.
-- `apply_split(dataframe, split_masks)`  
-  - Given a `DataFrame` and the mask dictionary from `masks_for_split`, return a dictionary **feature value → subset DataFrame**.
-
-### What You’ll Check
-
-- Use the **PlayTennis** toy dataset (`tennis_data` and `tennis_labels`) to:
-  - Inspect the masks for `Outlook`, `Temperature`, etc.
-  - Apply the masks to split both data and labels.
-- Confirm that each subset contains the correct rows (indices and values match expectations).
+1) Build intuition with pixel manipulations (smiley, sepia, grayscale).  
+2) Implement blur with **patch averaging**.  
+3) Generalize to **convolution** and **apply kernels**.  
+4) Use real filters (Gaussian, sharpen, edges).  
+5) Implement **max pooling**.  
+6) Build a dense **baseline NN**.  
+7) Create feature maps and pooling to form a **hand-coded CNN**.  
+8) Implement a learnable **Keras CNN** and compare.
 
 ---
 
-## 📉 Assignment 3 — Information Gain
+## ❤️ Warm-up & Filters
 
-**Goal:**  
-Quantify how good a split is by measuring how much it reduces entropy.
+### Assignment 0 — Recreate the Red Smiley
+**Goal:** Work with RGB arrays directly.
 
-### What to Implement
-
-- `information_gain(split_labels)`  
-  - Input: a dictionary mapping **feature value → label subset** (as produced by `apply_split` on the labels).
-  - Compute:
-    \[
-    IG(S, A) = \phi(S) \;-\; \sum_{v \in Values(A)} \frac{|S_v|}{|S|} \phi(S_v)
-    \]
-    where:
-    - \( S \) is the full label set for the node,
-    - \( S_v \) are the label subsets for each split value,
-    - \( \phi(\cdot) \) is the entropy.
-
-### What You’ll Check
-
-- Validate the implementation with the provided asserts, e.g.:
-  - Information gain for splitting on `thal` and `ca` in the heart disease data.
-- Conceptually: higher information gain → **better split** at that node.
+**What to do:**
+- You’re given an 8×8×3 array `smiley` (initialized to ones).
+- Set the listed coordinates in `pixel_list` to **red** by manipulating channels so that pixel `(r, c)` has `[1, 0, 0]`.
+- Display with `plt.imshow(smiley)`.
 
 ---
 
-## 🌳 Assignment 4 — ID3 Decision Tree (Categorical)
+### Assignment 1 — Sepia
+**Function:** `def sepia(image): -> sepia_image`
 
-**Goal:**  
-Build a full ID3-style decision tree that repeatedly splits on the feature with highest information gain.
+**Goal:** Apply the classic sepia transform per pixel.
 
-### What to Implement (in `class DecisionTree`)
+**What to implement:**
+- For each pixel `(R,G,B)` compute:
 
-- **Initialization**
-  - Store `data`, `labels`, and the minimum information-gain threshold `thres`.
-  - Initialize fields:
-    - `self.info_gain`
-    - `self.split_feature`
-    - `self.split_data`
-    - `self.split_labels`
-  - Call `self.determine_best_split()` to choose the best split at this node.
-  - Mark `self.leaf` as `True` when `self.info_gain < self.thres`.
-  - Store the **most common class** in `self.common_label` using `ratio(labels) >= 0.5`.
 
-- `determine_best_split(self)`
-  - Loop over all available features.
-  - For each feature:
-    - Create split masks → split data → split labels.
-    - Compute information gain using `information_gain(...)`.
-  - Choose the feature with **highest information gain**, and store:
-    - `self.info_gain`
-    - `self.split_feature`
-    - `self.split_data`
-    - `self.split_labels`
 
-- `create_subtrees(self)`
-  - If `self.leaf` is `False`, loop over all feature values in `self.split_data`:
-    - Create subsets for data and labels.
-    - Recursively construct `DecisionTree` subtrees.
-    - Store each subtree in `self.branches[value]`.
-
-- `classify(self, row)`
-  - If the node is a leaf, return `self.common_label`.
-  - Otherwise:
-    - Look up the value of `self.split_feature` in `row`.
-    - If that value is not in `self.branches`, fall back to `self.common_label`.
-    - Else, forward the classification to the corresponding subtree’s `classify`.
-
-- `validate(self, test_data, test_labels)`
-  - Loop over all rows in `test_data`, classify each row, and compare to the true label.
-  - Return the **classification accuracy**.
-
-### What You’ll Check
-
-- Build a tree on `train_data_cat` and evaluate:
-  - Training accuracy on `(train_data_cat, train_labels)`.
-  - Test accuracy on `(test_data_cat, test_labels)`.
-- Inspect whether the tree **overfits** or generalizes well, and how `thres` affects it.
+- **Cap** each channel to `1.0` if it exceeds 1.
+- Return an array with same shape as input.
+- Input image is RGB; keep outputs in `[0, 1]`.
 
 ---
 
-## 🔢 Assignment 5 — Numerical Decision Tree
+### Assignment 2 — Grayscale
+**Function:** `def grayscale(image): -> gray_image`
 
-**Goal:**  
-Extend your decision-tree approach to handle **numerical features** (continuous values) in addition to categorical ones.
+**Goal:** Convert RGB to single-channel grayscale.
 
-### What You’ll Do
-
-- Use the earlier split of the dataset into:
-  - `train_data_cat` (categorical features)
-  - `train_data_num` (numerical features)
-- Incorporate numerical splits by:
-  - Evaluating candidate **thresholds** on numerical columns (e.g. midpoints between sorted unique values).
-  - Treating each numerical split as a binary question:  
-    “Is feature \( x_j \leq \tau \)?” vs “\( x_j > \tau \)”.
-- Combine categorical and numerical features so that, at each node, the tree can consider **both types** of splits and choose the one with the highest information gain.
-
-### What You’ll Check
-
-- Train a numerical (or mixed-feature) decision tree on the heart disease data.
-- Compare performance to the purely categorical tree:
-  - Does including numerical splits improve accuracy?
-  - How does tree depth change?
+**What to implement:**
+- Compute the **average** across the 3 channels for each pixel.
+- Output shape `(H, W)` and values in `[0, 1]`.
+- Assertions check min/max ∈ `[0,1]`.
 
 ---
 
-## 🛑 Assignment 6 — Preventing Overfitting
+### Assignment 3 — Blur (Box Blur on Grayscale)
+**Function:** `def blur(image, size=3): -> blur_image`
 
-**Goal:**  
-Explore regularization strategies for decision trees using scikit-learn and understand overfitting behavior.
+**Goal:** Average each **size×size** patch to blur the image.
 
-### What You’ll Do
+**What to implement:**
+- For each output pixel, take the mean of the centered `size×size` patch.
+- **Border handling:** choose **padding** or **cropping** (either is acceptable, document your choice).
+- Input is **grayscale** (2D). `size` is an odd integer (e.g., 3, 5, 7).
+- Return the blurred image; larger `size` ⇒ stronger blur.
 
-- Use `sklearn.tree.DecisionTreeClassifier` with the prepared features.
-- Train a **fully grown** tree (no max depth) and evaluate:
-  - Training accuracy.
-  - Test accuracy.
-- Then try limiting complexity with hyperparameters such as:
-  - `max_depth`
-  - `min_samples_split`
-  - `min_samples_leaf`
-- Compare how these settings affect:
-  - Model complexity.
-  - Train vs test accuracy (overfitting vs underfitting).
+**Hints:** Loop over **output** pixels; use NumPy slicing and `np.mean`.
 
 ---
 
-## 🌲 Assignment 7 — Plotting the Decision Tree
+## 🔢 Convolution
 
-**Goal:**  
-Visualize the structure of a trained decision tree.
+### Assignment 4a — Convolution (Matrix–Matrix)
+**Function:** `def convolution(x, h): -> scalar`
 
-### What You’ll Do
+**Goal:** Implement the mathematical convolution on a **single patch**.
 
-- Fit a `DecisionTreeClassifier` with a **limited depth** (small `max_depth`) and store it as `d_tree`.
-- Use:
-  - `from sklearn import tree`
-  - `figure(figsize=(15, 10))`
-  - `tree.plot_tree(...)`
-- Configure:
-  - `feature_names=list(df.columns.values)`
-  - `class_names=['Healthy', 'Heart Disease']`
-  - `impurity=False` to keep the tree readable.
-
-### What You’ll Check
-
-- Inspect the plot:
-  - Which features appear near the root?
-  - How do decision rules partition the data space?
-- Adjust `max_depth` if the plot is too cluttered or too simple.
+**What to implement:**
+- `x` and `h` are same-size 2D arrays.
+- Return `sum_{i,j} x[i,j] * h[i,j]` (elementwise multiply & sum).
+- This is the building block used by `convolve`.
 
 ---
 
-## 🌳 Assignment 8 — Random Forests
+### Assignment 4b — Convolve (Image–Kernel)
+**Function:** `def convolve(image, h): -> out_image`
 
-**Goal:**  
-Reduce overfitting and improve robustness by building an ensemble of decision trees — a **Random Forest**.
+**Goal:** Slide a kernel over an image using your `convolution`.
 
-### What to Implement
-
-- `create_forest(n_trees)`
-  - Return a list of **untrained** `DecisionTreeClassifier` instances (or your own tree class) that will form the forest.
-
-- `train_forest(forest, data, labels, ratio=0.5)`
-  - For each tree:
-    - Draw a random **bootstrap sample** of the rows (e.g. using `DataFrame.sample`).
-    - Optionally sample a random subset of features (“feature bagging”).
-    - Train the tree on that sampled data/labels.
-
-- `predict_forest(forest, data)`
-  - For each sample:
-    - Collect predictions from all trees in the forest.
-    - Use **majority vote** over the binary predictions to get the final class.
-
-### What You’ll Check
-
-- Train a **Random Forest** with, for example:
-  - `n_trees = 1000`
-  - A subset of features per tree (e.g. 3 features).
-- Compute train and test accuracy, and compare to a **single-tree** model:
-  - Does the forest increase test accuracy?
-  - Does it reduce variance and overfitting?
+**What to implement:**
+- Input `image` is **grayscale** 2D; `h` is a **square** kernel.
+- For each valid location, extract the centered patch and call `convolution(patch, h)`.
+- Place the result at the **center** of the receptive field (like your blur).
+- Use a consistent border strategy (same as in Assignment 3) and return an output image (same dtype/range where applicable).
 
 ---
 
-## ✅ Expected Learning Outcomes
+## 🧪 Real Filters
 
-By the end of this notebook, you should be able to:
+### Assignment 5a — Gaussian Blur (5×5)
+**Code cell variable:** `gauss_filter`
 
-- Explain and implement **entropy** and **information gain** for binary classification.
-- Construct an **ID3 decision tree** from scratch for categorical features.
-- Extend decision trees to handle **numerical** features via threshold-based splits.
-- Diagnose and mitigate **overfitting** using depth limits and other regularization options.
-- Visualize a decision tree using `sklearn.tree.plot_tree`.
-- Implement and evaluate a simple **Random Forest** via bagging and majority voting.
+**Goal:** Use a normalized 5×5 **Gaussian kernel** to blur.
+
+**What to implement:**
+- Define `gauss_filter` as:
+
+
+
+- Convolve `gray_image` with `gauss_filter` using your `convolve`.
+- Observe the smoother blur compared to the box filter.
 
 ---
 
-## 🧷 Notes
+### Assignment 5b — Sharpening
+**Code cell variable:** `sharp_filter`
 
-- Make sure the following libraries are available:  
-  `pandas`, `numpy`, `scikit-learn`, `matplotlib`.
-- The notebook uses heart disease data from multiple sources; keep the `data/` folder next to the notebook.
-- Cells marked with `# YOUR CODE HERE` are required for passing the automatic checks (`notebook_checker`).
-- Rerun tests and assertions after each implementation step to catch bugs early.
+**Goal:** Enhance edges by amplifying local differences.
+
+**What to implement:**
+- Define the 3×3 sharpening kernel:
+
+
+- Convolve `gray_image` with `sharp_filter`.
+- Clip results to `[0,1]` after filtering.
+
+---
+
+### Assignment 6 — Edge Detection
+**Code cell variable:** `sobel_magnitude`
+
+**Goal:** Detect edges using gradient-like filters and magnitude.
+
+**What to do:**
+- Use provided edge kernels (e.g., Sobel-like / Laplacian shown in the text).
+- Typical approach: convolve with **X** and **Y** edge filters to get `Ix` and `Iy`, then compute:
+
+
+- Display the edge magnitude image (grayscale).
+
+**Note:** Blurring beforehand reduces noise sensitivity.
+
+---
+
+## ⏬ Downsampling — Pooling
+
+**Q1 (theory):** Explain why pooling helps control overfitting.  
+(*Answer in the designated markdown cell.*)
+
+### Assignment 7 — Max Pooling
+**Function:** `def max_pool(image, kern_size, stride): -> pooled`
+
+**Goal:** Implement 2D max pooling over a grayscale image.
+
+**What to implement:**
+- `kern_size` is a tuple `(kH, kW)`, `stride` is an integer.
+- For each window, take the **max** value.
+- Output dimensions:
+
+
+- Return pooled image. Try different kernels/strides.
+
+---
+
+## 🧠 From Filters to CNNs
+
+### Dense Baseline (Provided)
+**Function (already implemented):**  
+`build_neural_net(input_size, hidden_nodes, num_classes)`  
+Builds a 784→hidden→softmax dense model for Fashion-MNIST.
+
+---
+
+### Assignment 8 — Feature Maps (Hand-coded CNN part 1)
+**Function:** `def create_fmaps(filters, data): -> fmaps`
+
+**Goal:** Produce multiple **feature maps** per image via convolution.
+
+**What to implement:**
+- `filters`: list of 2D kernels (e.g., `gauss_filter`, `sharp_filter`, `x_sobel_filter`, `y_sobel_filter`).
+- `data`: array of images `(N, H, W)` (grayscale).
+- For each filter *f* and each image, compute `convolve(image, f)` (use `fast_convolve(..., mode="same")` as permitted in the cell).
+- Return a 4D array with shape `(num_filters, N, H, W)`.
+
+---
+
+### Assignment 9 — Pooling Features (Hand-coded CNN part 2)
+**Function:** `def pool_fmaps(fmaps): -> fmaps_small`
+
+**Goal:** Downsample each feature map with 2×2 max pooling.
+
+**What to implement:**
+- Input `fmaps` shape: `(num_filters, N, H, W)`.
+- Output `fmaps_small` shape: `(num_filters, N, H//2, W//2)`  
+(half each spatial dimension).
+- Use `fast_pool(..., block_size=(1, 1, 2, 2), func=np.max)` or equivalent logic to pool per feature map.
+- This becomes the input to a dense head after flattening.
+
+---
+
+### Assignment 10 — Keras CNN (Learned Features)
+**Function:** `def build_conv_net(image_size, hidden_nodes, num_classes): -> model`
+
+**Goal:** Replace hand-crafted filters with **learned** convolutional layers.
+
+**What to implement:**
+- Build a Keras `Sequential` model that starts with:
+- `layers.Conv2D(...)` on inputs of shape `(image_size, image_size, 1)`
+- `layers.MaxPool2D(...)`
+- `layers.Flatten()`
+- Dense classifier head (e.g., `Dense(hidden_nodes, activation='sigmoid')` then `Dense(num_classes, activation='softmax')`)
+- Compile with `categorical_crossentropy`, track `accuracy`.
+- Train and compare validation curves against the baseline dense net and hand-coded CNN.
+
+---
+
+## 🎯 Expected Outcomes
+
+By the end you can:
+- Implement **sepia**, **grayscale**, **box blur**, and general **convolution**.
+- Apply real filters: **Gaussian**, **sharpen**, **edges**.
+- Implement **max pooling** and compute output shapes.
+- Build a dense classifier baseline and a **hand-coded CNN** (filters → feature maps → pooling → dense).
+- Build and train a **Keras CNN**, and explain why learned filters often outperform fixed ones.
+
+---
+
+## 📝 Notes & Tips
+
+- Keep all images in `[0, 1]`. Clip where needed.
+- Document your **border strategy** (padding vs cropping).
+- For Gaussian blur, use the provided normalized 5×5 kernel.
+- For edge detection, compute gradient magnitude after convolving with X/Y kernels.
+- Shapes matter: verify `(num_filters, N, H, W)` and halving after pooling.
